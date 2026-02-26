@@ -1,0 +1,194 @@
+{
+  "name": "email analyzer",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.1,
+      "position": [
+        -560,
+        -1248
+      ],
+      "id": "ea5e25e2-24fb-434f-86c8-fe330ad1cf29",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "MZuPVYV3ek3c3aRE",
+          "name": "IMAP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert cybersecurity analyst. Analyze this email for phishing indicators. \n\nSender: {{$json.from}}\nSubject: {{$json.subject}}\nBody: {{ $json.textHtml }}\n\nReturn ONLY a raw JSON object. Do not use markdown formatting, do not use code blocks (```json), and do not include any other text. Use this exact structure:\n{\n  \"is_phishing\": true/false,\n  \"confidence_score\": 0-100,\n  \"indicators\": [\"indicator 1\", \"indicator 2\"],\n  \"summary\": \"brief explanation\"\n}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -160,
+        -1280
+      ],
+      "id": "709685a9-9e57-428a-9627-de887d39914a",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "lDBpwB9RrMJFiwQg",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0cf657a1-a02c-4e11-929d-f01b39b39261",
+              "leftValue": "={{ JSON.parse($json.content.parts[0].text).is_phishing }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        368,
+        -880
+      ],
+      "id": "0a618306-e6d5-4968-aa14-ad734f08265c",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "subject": "🚨 PHISHING ALERT: Suspicious Email Caught!",
+        "emailFormat": "text",
+        "text": "=The AI Analyzer just caught a phishing attempt!\n\nConfidence Score: {{JSON.parse($json.content.parts[0].text).confidence_score}}%\nWhy it was flagged: {{JSON.parse($json.content.parts[0].text).summary}}\n\nIndicators found:\n{{JSON.parse($json.content.parts[0].text).indicators.join(', ')}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        992,
+        -1120
+      ],
+      "id": "a9dd7ff8-76e1-4059-b389-9c5988eb85b3",
+      "name": "Send an Email",
+      "webhookId": "15732c65-ba27-47b7-816e-69a75ffd1e3a",
+      "credentials": {
+        "smtp": {
+          "id": "zXDbALXm6jgiAZmD",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "subject": "✅ SAFE EMAIL CHECKED",
+        "emailFormat": "text",
+        "text": "=The AI Analyzer checked a new email and marked it as SAFE.\n\nConfidence Score: {{JSON.parse($json.content.parts[0].text).confidence_score}}%\nAI Summary: {{JSON.parse($json.content.parts[0].text).summary}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        928,
+        -816
+      ],
+      "id": "a6339f5e-cf77-43ee-8ccd-d02000b70222",
+      "name": "Send an Email1",
+      "webhookId": "83bf7910-ec7f-4145-aa02-38108919af1a",
+      "credentials": {
+        "smtp": {
+          "id": "zXDbALXm6jgiAZmD",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send an Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7429a7c6-b3fe-44ee-8237-4b4c4e90ffbe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0ed71b10f8842e8575c912b512c353e964656c8c80335151d70a77e74807a940"
+  },
+  "id": "vaLc6MhuoeOrWJaa",
+  "tags": []
+}
