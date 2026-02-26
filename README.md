@@ -1,53 +1,85 @@
-# INCIDENT RESPONSE LAB 
+# AI-Automated SOC Phishing Analyzer (n8n + Gemini)
 
-### 🛠️ Tools & Technologies Used
-* **Security Information & Event Management (SIEM):** Used Splunk to query logs and track the spread of the phishing email across the organization.
-* **Threat Intelligence:** Used VirusTotal to analyze the reputation of the malicious URL and domain age.
-* **Email Security:** Simulated email header analysis to identify typosquatting (`c0mpany-hr.net`) and spoofing.
-* **Whois:** Used to verify domain registration details and identify "freshly" created domains (< 48 hours).
-
-### 🧠 Lessons Learned
-* **Typosquatting Awareness:** Learned to look for subtle character replacements (like `0` for `o`) in sender addresses, which is a common technique to bypass quick visual inspections.
-* **Containment Strategy:** Understood that resetting the user's password is a critical immediate step, even if the user claims they didn't click, to prevent potential lateral movement.
-* **Scope Assessment:** Realized that finding one phishing email is rarely the end; you must always pivot to search the entire environment for the same indicators (Sender/Subject) to find other victims.
+This repository contains an automated Security Operations Center (SOC) pipeline built in [n8n](https://n8n.io/). It monitors an inbox, uses Google's Gemini AI to analyze incoming emails for phishing indicators, and automatically routes threat alerts or safe logs based on a parsed JSON confidence score.
 
 
+## ⚙️ Prerequisites
+* A running instance of **n8n** (Docker recommended).
+* A **Google Gemini API Key**.
+* A dedicated email account (e.g., Gmail) with **App Passwords** enabled.
 
+## 🚀 Step-by-Step Setup
 
+### 1. Import the Workflow
+1. Open your n8n UI.
+2. Click **Add Workflow** > **Import from File**.
+3. Select the `workflow.json` file from this repository.
 
-# Incident Description:
+### 2. Configure the IMAP Trigger (Email Intake)
+This node listens for unread emails and pulls them into the pipeline.
+* **Credential Type:** IMAP account
+* **User:** `<YOUR_TEST_EMAIL@gmail.com>`
+* **Password:** `<YOUR_16_CHAR_APP_PASSWORD>` *(Never commit this password to Git!)*
+* **Host:** `imap.gmail.com`
+* **Port:** `993`
+* **SSL/TLS:** `ON`
+* **Action:** Set the node to mark emails as **Read** after fetching so it doesn't process them twice.
 
-On December 30, 2025, at 09:30 AM, the Security Operations Center (SOC) received a user-reported phishing attempt via the 'Report Phishing' button. The reporting user, John Doe, flagged an email claiming to be from Human Resources regarding a payroll discrepancy. Preliminary visual inspection revealed typosquatting in the sender address and a suspicious external link (.xyz domain) requesting credential input.
+### 3. Configure the AI Node (Google Gemini)
+This is the brain of the operation. Add your Gemini API credential to the node. 
+* **Resource:** Message a Model
+* **Model:** gemini-pro (or your preferred Gemini variant)
+* **Message:** Use the following exact prompt to ensure the AI outputs strict, parseable JSON:
 
+> You are an expert cybersecurity analyst. Analyze this email for phishing indicators. 
+> 
+> Sender: {{$json.from}}
+> Subject: {{$json.subject}}
+> Body: {{$json.textPlain}}
+> 
+> Return ONLY a raw JSON object. Do not use markdown formatting, do not use code blocks (```json), and do not include any other text. Use this exact structure:
+> {
+>   "is_phishing": true/false,
+>   "confidence_score": 0-100,
+>   "indicators": ["indicator 1", "indicator 2"],
+>   "summary": "brief explanation"
+> }
 
+### 4. The Routing Logic (If Node)
+Because Gemini returns the JSON as a raw text string inside an API wrapper, the `If` node uses a custom expression to parse it on the fly.
+* **Condition Type:** Boolean
+* **Expression:** `{{ JSON.parse($json.content.parts[0].text).is_phishing }}`
+* **Rule:** `Is True`
 
+### 5. Configure the SMTP Alert Nodes (Action)
+If a threat is detected (True) or safe (False), n8n sends an automated alert. You will need to configure both `Send Email` nodes.
+* **Credential Type:** SMTP account
+* **User:** `<YOUR_TEST_EMAIL@gmail.com>`
+* **Password:** `<YOUR_16_CHAR_APP_PASSWORD>`
+* **Host:** `smtp.gmail.com`
+* **Port:** `465`
+* **SSL/TLS:** `ON`
 
-## 📝 Incident Report: IR-2025-12-30
+**True Branch (Phishing Alert) Body Configuration:**
+Change the email format to **Text** and use this expression:
+```text
+🚨 PHISHING ALERT DETECTED
 
-Incident Type: Phishing / Credential Harvesting Severity: Medium Status: CLOSED Analyst: [Your Name]
-1. Executive Summary
+Confidence Score: {{JSON.parse($json.content.parts[0].text).confidence_score}}%
+Why it was flagged: {{JSON.parse($json.content.parts[0].text).summary}}
 
-A user (John Doe) reported a suspicious email regarding "Year End Bonus Verification." Analysis confirmed it was a credential harvesting attempt using a typosquatted domain. The threat was contained, and the email campaign was purged from 14 other mailboxes.
-2. Artifact Analysis (The Evidence)
+Indicators found:
+{{JSON.parse($json.content.parts[0].text).indicators.join(', ')}}
+```
 
-    Sender: alerts@c0mpany-hr.net (Spoofed "company" with a zero)
+** False Branch (Safe Log) Body Configuration:
+Change the email format to Text and use this expression:
+✅ SAFE EMAIL CHECKED
+```
+Confidence Score: {{JSON.parse($json.content.parts[0].text).confidence_score}}%
+AI Summary: {{JSON.parse($json.content.parts[0].text).summary}}
+```
 
-    Subject: "ACTION REQUIRED: Year End Bonus Verification"
+6. Go Live
 
-    Malicious URL: http://acme-corp-portal-secure-logon.xyz/auth.php
-
-    Intelligence: VirusTotal flagged the domain as malicious (18/90 vendors); domain age < 2 days.
-
-3. Actions Taken (Containment & Eradication)
-
-    [Network] Blocked access to the malicious domain *.xyz on the corporate firewall.
-
-    [Identity] Forced password reset for user John Doe.
-
-    [Email Security] Performed SIEM search for sender alerts@c0mpany-hr.net.
-
-    [Cleanup] Identified and hard-deleted the phishing email from 14 target mailboxes (Finance/Sales depts).
-
-4. Conclusion
-
-No successful compromise detected. The attack vector has been neutralized.
+Toggle the workflow from "Inactive" to "Active"
